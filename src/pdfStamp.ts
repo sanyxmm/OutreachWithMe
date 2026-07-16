@@ -59,7 +59,7 @@ function drawLines(page: PDFPage, lines: string[], x: number, topY: number, font
       y: topY - i * LINE_HEIGHT,
       size: FONT_SIZE,
       font,
-      color: rgb(0, 0, 0),
+      color: rgb(1, 1, 1),
     });
   });
 }
