@@ -2,9 +2,10 @@ import { useState } from "react";
 import SalesQlTab from "./SalesQlTab";
 import ContactOutTab from "./ContactOutTab";
 import PdfTab from "./PdfTab";
+import CombinedTab from "./CombinedTab";
 import "./App.css";
 
-type Tab = "salesql" | "contactout" | "pdf";
+type Tab = "salesql" | "contactout" | "pdf" | "combined";
 
 function App() {
   const [tab, setTab] = useState<Tab>("salesql");
@@ -31,10 +32,17 @@ function App() {
         >
           PDF Stamp
         </button>
+        <button
+          className={tab === "combined" ? "tab active" : "tab"}
+          onClick={() => setTab("combined")}
+        >
+          Full Pipeline
+        </button>
       </div>
       {tab === "salesql" && <SalesQlTab />}
       {tab === "contactout" && <ContactOutTab />}
       {tab === "pdf" && <PdfTab />}
+      {tab === "combined" && <CombinedTab />}
     </div>
   );
 }
