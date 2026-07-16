@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { parseCurl } from "../_lib/parseCurl.ts";
+import { parseCurl } from "../_lib/parseCurl";
 
 function setPage(url: string, page: number): string {
   const u = new URL(url);
