@@ -7,6 +7,7 @@ import {
   type Lead,
 } from "./contactout";
 import { exportXlsx } from "./exportXlsx";
+import InfoCallout from "./InfoCallout";
 
 interface FetchAllResponse {
   leads?: unknown[];
@@ -76,24 +77,28 @@ function ContactOutTab() {
 
   return (
     <div className="tab-panel">
-      <p className="subtitle">
+      <InfoCallout>
         Paste a curl command copied from your browser's devtools for page 1 of a ContactOut
         leads list. The app replays it server-side, incrementing the page number, and stops
         automatically once a page comes back empty or the page cap is hit — no manual
         copy-pasting of JSON responses. Nothing here is written to disk; the curl (and its
         session cookie) only lives in memory for this request.
-      </p>
+      </InfoCallout>
 
-      <section className="field">
-        <label htmlFor="co-curl">Curl command (page 1)</label>
-        <textarea
-          id="co-curl"
-          placeholder="curl 'https://contactout.com/lists/.../leads?...' -H '...' -b '...' ..."
-          value={curl}
-          onChange={(e) => setCurl(e.target.value)}
-          rows={8}
-        />
-      </section>
+      <div className="rl-label-row">
+        <label className="rl-field-label" htmlFor="co-curl">
+          Curl command (page 1)
+        </label>
+        <span className="field-hint-accent">must include page parameter</span>
+      </div>
+      <textarea
+        id="co-curl"
+        className="rl-textarea mono"
+        placeholder="curl 'https://contactout.com/lists/.../leads?...' -H '...' -b '...' ..."
+        value={curl}
+        onChange={(e) => setCurl(e.target.value)}
+        rows={8}
+      />
 
       <div className="field-row">
         <section className="field">
@@ -108,22 +113,6 @@ function ContactOutTab() {
           />
           <span className="hint">Stops early if a page comes back with no leads.</span>
         </section>
-      </div>
-
-      <div className="actions">
-        <button className="primary-btn" onClick={handleFetch} disabled={fetching}>
-          {fetching ? "Fetching..." : "Fetch leads"}
-        </button>
-        {leads.length > 0 && (
-          <button className="link-btn" onClick={handleClear}>
-            Clear all leads
-          </button>
-        )}
-      </div>
-
-      {status && <p className="hint">{status}</p>}
-
-      <div className="field-row">
         <section className="field">
           <label htmlFor="co-job-role">Job role</label>
           <input
@@ -136,9 +125,27 @@ function ContactOutTab() {
         </section>
       </div>
 
-      <button className="link-btn" onClick={() => setShowAdvanced((v) => !v)}>
-        {showAdvanced ? "Hide" : "Show"} advanced options
-      </button>
+      <div className="divider" />
+
+      <div className="actions">
+        <button className="primary-btn" onClick={handleFetch} disabled={fetching}>
+          {fetching ? "Fetching..." : "▷ Fetch leads"}
+        </button>
+        <button className="secondary-btn" onClick={() => setShowAdvanced((v) => !v)}>
+          {showAdvanced ? "Hide" : "Show"} advanced options
+        </button>
+        {leads.length > 0 && (
+          <button className="link-btn" onClick={handleClear}>
+            Clear all leads
+          </button>
+        )}
+        <span className="status-pill status-pill-warning">
+          <span className="status-dot" aria-hidden="true" />
+          {leads.length} lead{leads.length === 1 ? "" : "s"} collected
+        </span>
+      </div>
+
+      {status && <p className="hint success">{status}</p>}
 
       {showAdvanced && (
         <div className="field-row">
@@ -175,10 +182,24 @@ function ContactOutTab() {
 
       {error && <p className="error">{error}</p>}
 
-      <div className="actions">
-        <span className="count">{leads.length} lead{leads.length === 1 ? "" : "s"} collected</span>
-        <button className="primary-btn" onClick={handleDownload} disabled={rows.length === 0}>
-          Download outreach_contacts.xlsx
+      <div className="export-card">
+        <div className="export-card-info">
+          <span className="export-card-icon" aria-hidden="true">
+            ✓
+          </span>
+          <div>
+            <p className="export-card-title">Ready to Export</p>
+            <p className="export-card-body">
+              Once leads are fetched, download your customized Excel document below.
+            </p>
+          </div>
+        </div>
+        <button
+          className="primary-btn export-btn"
+          onClick={handleDownload}
+          disabled={rows.length === 0}
+        >
+          ⬇ Download outreach_contacts.xlsx
         </button>
       </div>
 

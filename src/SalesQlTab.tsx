@@ -10,6 +10,7 @@ import {
   type EmailPattern,
 } from "./outreach";
 import { exportXlsx } from "./exportXlsx";
+import InfoCallout from "./InfoCallout";
 
 function SalesQlTab() {
   const [html, setHtml] = useState("");
@@ -66,10 +67,10 @@ function SalesQlTab() {
 
   return (
     <div className="tab-panel">
-      <p className="subtitle">
+      <InfoCallout>
         Paste or upload the SalesQL contacts table HTML, set the email domain and job role,
         then download the outreach-ready Excel sheet.
-      </p>
+      </InfoCallout>
 
       <section className="field">
         <label htmlFor="html-input">SalesQL contacts HTML</label>
@@ -132,9 +133,11 @@ function SalesQlTab() {
         </section>
       </div>
 
-      <button className="link-btn" onClick={() => setShowAdvanced((v) => !v)}>
-        {showAdvanced ? "Hide" : "Show"} advanced options
-      </button>
+      <div className="actions">
+        <button className="secondary-btn" onClick={() => setShowAdvanced((v) => !v)}>
+          {showAdvanced ? "Hide" : "Show"} advanced options
+        </button>
+      </div>
 
       {showAdvanced && (
         <div className="field-row">
@@ -172,10 +175,23 @@ function SalesQlTab() {
 
       {error && <p className="error">{error}</p>}
 
-      <div className="actions">
-        <span className="count">{rows.length} contact{rows.length === 1 ? "" : "s"} parsed</span>
-        <button className="primary-btn" onClick={handleDownload} disabled={rows.length === 0}>
-          Download outreach_contacts.xlsx
+      <div className="divider" />
+
+      <div className="export-card">
+        <div className="export-card-info">
+          <span className="export-card-icon" aria-hidden="true">
+            ✓
+          </span>
+          <div>
+            <p className="export-card-title">Ready to Export</p>
+            <p className="export-card-body">
+              {rows.length} contact{rows.length === 1 ? "" : "s"} parsed — download your
+              customized Excel document below.
+            </p>
+          </div>
+        </div>
+        <button className="primary-btn export-btn" onClick={handleDownload} disabled={rows.length === 0}>
+          ⬇ Download outreach_contacts.xlsx
         </button>
       </div>
 
