@@ -8,6 +8,33 @@ const BOX_HEIGHT_PT = 2.5 * CM_TO_PT;
 const LINE_HEIGHT = FONT_SIZE * 1.2;
 const LINES_PER_BOX = Math.max(1, Math.floor(BOX_HEIGHT_PT / LINE_HEIGHT));
 
+const CHAR_REPLACEMENTS: Record<string, string> = {
+  "‘": "'",
+  "’": "'",
+  "“": '"',
+  "”": '"',
+  "–": "-",
+  "—": "-",
+  "…": "...",
+  " ": " ",
+  "•": "-",
+};
+
+function sanitizeForWinAnsi(text: string): string {
+  let result = "";
+  for (const char of text) {
+    const replacement = CHAR_REPLACEMENTS[char];
+    if (replacement !== undefined) {
+      result += replacement;
+      continue;
+    }
+    const code = char.codePointAt(0) ?? 0;
+    // WinAnsi only covers this range; drop anything else rather than throwing.
+    result += code <= 0xff ? char : "?";
+  }
+  return result;
+}
+
 function wrapToWidth(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
   const words = text.split(/\s+/).filter(Boolean);
   const lines: string[] = [];
@@ -45,7 +72,7 @@ export async function stampTopLeft(file: File, text: string): Promise<Uint8Array
 
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const { width, height } = page.getSize();
-  const allLines = wrapToWidth(text, font, FONT_SIZE, BOX_WIDTH_PT);
+  const allLines = wrapToWidth(sanitizeForWinAnsi(text), font, FONT_SIZE, BOX_WIDTH_PT);
 
   const firstBoxLines = allLines.slice(0, LINES_PER_BOX);
   const overflowLines = allLines.slice(LINES_PER_BOX, LINES_PER_BOX * 2);
