@@ -366,6 +366,13 @@
   max-width: 480px;
 }
 
+.export-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .export-btn {
   background: var(--success) !important;
 }
@@ -437,6 +444,72 @@
 .field input[type="file"] {
   color: var(--text);
   font-size: 14px;
+}
+
+.skill-category-field {
+  flex: 1 1 100%;
+}
+
+.job-role-inputs {
+  display: flex;
+  gap: 8px;
+}
+
+.job-role-inputs input {
+  min-width: 0;
+  font-size: 13px;
+  padding: 8px 10px;
+}
+
+.job-role-inputs input:first-child {
+  flex: 2;
+}
+
+.job-role-inputs input:last-child {
+  flex: 1;
+}
+
+@media (max-width: 500px) {
+  .job-role-inputs {
+    flex-direction: column;
+  }
+}
+
+.radio-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 20px;
+  margin-top: 4px;
+}
+
+.radio-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--text-h);
+  cursor: pointer;
+}
+
+.radio-option input[type="radio"] {
+  accent-color: var(--accent, #6366f1);
+  cursor: pointer;
+}
+
+.skill-category-custom {
+  font: inherit;
+  font-size: 15px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--page-bg);
+  color: var(--text-h);
+  box-sizing: border-box;
+  width: 100%;
+  margin-top: 4px;
 }
 
 .hint {
@@ -557,6 +630,11 @@
 
 .secondary-btn:hover {
   filter: brightness(1.05);
+}
+
+.icon-btn {
+  padding: 12px 16px;
+  font-size: 16px;
 }
 
 /* ---------- Referral Launchpad ---------- */
@@ -689,6 +767,32 @@
   font-size: 12px;
   color: var(--label);
   flex-shrink: 0;
+}
+
+.rl-source-toggle {
+  display: inline-flex;
+  flex-shrink: 0;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--page-bg);
+  border: 1px solid var(--border);
+}
+
+.rl-source-btn {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: var(--label);
+  cursor: pointer;
+}
+
+.rl-source-btn.active {
+  background: var(--accent);
+  color: #fff;
 }
 
 .rl-card-body {
@@ -884,6 +988,10 @@
   margin-bottom: 0;
 }
 
+.rl-advanced .skill-category-field {
+  grid-column: 1 / -1;
+}
+
 @media (max-width: 500px) {
   .rl-advanced .field-row {
     grid-template-columns: 1fr;
@@ -892,7 +1000,7 @@
 
 .rl-locked-input {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   gap: 10px;
 }
 
@@ -925,6 +1033,37 @@
   flex-shrink: 0;
   color: var(--label);
   font-size: 14px;
+}
+
+.rl-icon-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  box-sizing: border-box;
+  padding: 0;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--page-bg);
+  color: var(--accent);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.rl-icon-btn:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+
+.rl-icon-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.spinner-dark {
+  border-color: rgba(0, 0, 0, 0.2);
+  border-top-color: var(--accent);
 }
 
 .rl-actions-row {

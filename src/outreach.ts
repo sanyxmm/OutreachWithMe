@@ -11,10 +11,30 @@ export interface OutreachOptions {
   domain: string;
   jobRole: string;
   resumeId: string;
-  cloudinaryResumeId?: string;
   interval: number;
   companyOnly?: string;
   emailPattern?: EmailPattern;
+  skillCategory?: SkillCategoryChoice;
+}
+
+export const SKILL_CATEGORIES = [
+  { id: "mern+devops", label: "MERN + DevOps" },
+  { id: "java", label: "Java" },
+  { id: "ai/ml", label: "AI/ML" },
+  { id: "other", label: "Other (custom)" },
+] as const;
+
+export type SkillCategoryId = (typeof SKILL_CATEGORIES)[number]["id"];
+
+export interface SkillCategoryChoice {
+  id: SkillCategoryId;
+  custom?: string;
+}
+
+export function resolveSkillCategory(role: string, choice?: SkillCategoryChoice): string {
+  if (!choice) return skillCat(role);
+  if (choice.id === "other") return choice.custom?.trim() || skillCat(role);
+  return choice.id;
 }
 
 export const HEADERS = [
@@ -22,10 +42,10 @@ export const HEADERS = [
   "exp_years_expected", "verified_emails", "skill_category",
   "resume_file_id", "priority", "email_interval_days", "status",
   "first_email_sent", "last_email_sent", "followup_count",
-  "next_followup", "due_today", "Job_Role_ID", "SKIP", "cloudinary_resume_id",
+  "next_followup", "due_today", "Job_Role_ID", "SKIP",
 ] as const;
 
-export const WIDTHS = [28, 30, 16, 45, 16, 32, 26, 32, 9, 17, 8, 15, 15, 14, 13, 10, 38, 6, 32];
+export const WIDTHS = [28, 30, 16, 45, 16, 32, 26, 32, 9, 17, 8, 15, 15, 14, 13, 10, 38, 6];
 
 const NAME_RE = /person-card__name-text[^>]*>([\s\S]*?)<\/span>[\s\S]*?person-card__title[^>]*>([\s\S]*?)<\/div>/;
 const COMPANY_RE = /company-cell__info__name[^>]*>\s*<span[^>]*>([\s\S]*?)<\/span>[\s\S]*?company-cell__info__extra[^>]*>\s*<span[^>]*>([\s\S]*?)<\/span>/;
@@ -133,6 +153,14 @@ function applyPattern(first: string, last: string, pattern: EmailPattern): strin
   }
 }
 
+export function formatJobRole(role: string, jobId: string): string {
+  const r = role.trim();
+  const id = jobId.trim();
+  if (!id) return r;
+  if (!r) return `(JobID: ${id})`;
+  return `${r} ( JobID: ${id})`;
+}
+
 export function makeEmail(full: string, domain: string, pattern: EmailPattern = "first.last"): string {
   const [f, l] = nameParts(full);
   if (!f) return "";
@@ -181,8 +209,8 @@ export function dedupeContacts(contacts: Contact[], companyOnly?: string): Conta
 export function buildRows(contacts: Contact[], opts: OutreachOptions): OutputRow[] {
   return contacts.map(({ name, company, role }) => [
     name, company, "", role, expYears(role),
-    makeEmail(name, opts.domain, opts.emailPattern), skillCat(role),
+    makeEmail(name, opts.domain, opts.emailPattern), resolveSkillCategory(role, opts.skillCategory),
     opts.resumeId, "", opts.interval, "", "", "", "", "", "",
-    opts.jobRole, "", opts.cloudinaryResumeId ?? "",
+    opts.jobRole, "",
   ]);
 }

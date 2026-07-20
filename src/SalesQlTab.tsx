@@ -4,25 +4,31 @@ import {
   dedupeContacts,
   buildRows,
   makeEmail,
+  formatJobRole,
   HEADERS,
   EMAIL_PATTERNS,
   type Contact,
   type EmailPattern,
+  type SkillCategoryChoice,
 } from "./outreach";
 import { exportXlsx } from "./exportXlsx";
 import InfoCallout from "./InfoCallout";
+import SkillCategoryPicker from "./SkillCategoryPicker";
+import JobRoleFields from "./JobRoleFields";
 
 function SalesQlTab() {
   const [html, setHtml] = useState("");
-  const [domain, setDomain] = useState("gehealthcare.com");
+  const [domain, setDomain] = useState("");
   const [emailPattern, setEmailPattern] = useState<EmailPattern>("first.last");
-  const [jobRole, setJobRole] = useState("Intern(JobID: R4043322)");
+  const [jobRoleName, setJobRoleName] = useState("Intern");
+  const [jobId, setJobId] = useState("R4043322");
   const [resumeId, setResumeId] = useState("1c5sk0RWMtGDzy3zbWmLwGeULgJhKckiV");
   const [interval, setInterval_] = useState(1);
   const [companyOnly, setCompanyOnly] = useState("");
+  const [skillCategory, setSkillCategory] = useState<SkillCategoryChoice>({ id: "mern+devops" });
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [fileName, setFileName] = useState("");
   const [error, setError] = useState("");
+  const [copyStatus, setCopyStatus] = useState("");
 
   const contacts: Contact[] = useMemo(() => {
     if (!html.trim()) return [];
@@ -33,9 +39,20 @@ function SalesQlTab() {
     }
   }, [html, companyOnly]);
 
+  const jobRole = useMemo(() => formatJobRole(jobRoleName, jobId), [jobRoleName, jobId]);
+
   const rows = useMemo(
-    () => buildRows(contacts, { domain, jobRole, resumeId, interval, companyOnly: companyOnly || undefined, emailPattern }),
-    [contacts, domain, jobRole, resumeId, interval, companyOnly, emailPattern]
+    () =>
+      buildRows(contacts, {
+        domain,
+        jobRole,
+        resumeId,
+        interval,
+        companyOnly: companyOnly || undefined,
+        emailPattern,
+        skillCategory,
+      }),
+    [contacts, domain, jobRole, resumeId, interval, companyOnly, emailPattern, skillCategory]
   );
 
   const sampleEmail = useMemo(
@@ -43,19 +60,10 @@ function SalesQlTab() {
     [domain, emailPattern]
   );
 
-  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setFileName(file.name);
-    const text = await file.text();
-    setHtml(text);
-    setError("");
-  }
-
   async function handleDownload() {
     setError("");
     if (rows.length === 0) {
-      setError("No contacts found. Paste or upload the SalesQL HTML table first.");
+      setError("No contacts found. Paste the SalesQL HTML table first.");
       return;
     }
     if (!domain.trim()) {
@@ -65,30 +73,34 @@ function SalesQlTab() {
     await exportXlsx(rows, "outreach_contacts.xlsx");
   }
 
+  async function handleCopyRows() {
+    setCopyStatus("");
+    if (rows.length === 0) return;
+    const tsv = [HEADERS, ...rows]
+      .map((r) => r.map((v) => String(v).replace(/\t/g, " ")).join("\t"))
+      .join("\n");
+    try {
+      await navigator.clipboard.writeText(tsv);
+      setCopyStatus(`Copied ${rows.length} row(s) — paste into Google Sheets with Cmd/Ctrl+V.`);
+    } catch {
+      setCopyStatus("Couldn't copy — your browser may be blocking clipboard access.");
+    }
+  }
+
   return (
     <div className="tab-panel">
       <InfoCallout>
-        Paste or upload the SalesQL contacts table HTML, set the email domain and job role,
-        then download the outreach-ready Excel sheet.
+        Paste the SalesQL contacts table HTML, set the email domain and job role, then download
+        the outreach-ready Excel sheet.
       </InfoCallout>
 
       <section className="field">
         <label htmlFor="html-input">SalesQL contacts HTML</label>
-        <input
-          id="html-file"
-          type="file"
-          accept=".html,.htm,text/html"
-          onChange={handleFile}
-        />
-        {fileName && <span className="filename">{fileName}</span>}
         <textarea
           id="html-input"
-          placeholder="...or paste the copied SalesQL table HTML here"
+          placeholder="Paste the copied SalesQL table HTML here"
           value={html}
-          onChange={(e) => {
-            setHtml(e.target.value);
-            setFileName("");
-          }}
+          onChange={(e) => setHtml(e.target.value)}
           rows={8}
         />
       </section>
@@ -121,16 +133,13 @@ function SalesQlTab() {
           <span className="hint">e.g. {sampleEmail}</span>
         </section>
 
-        <section className="field">
-          <label htmlFor="job-role">Job role</label>
-          <input
-            id="job-role"
-            type="text"
-            value={jobRole}
-            onChange={(e) => setJobRole(e.target.value)}
-            placeholder='Intern(JobID: R4043322)'
-          />
-        </section>
+        <JobRoleFields
+          idPrefix="salesql"
+          role={jobRoleName}
+          jobId={jobId}
+          onRoleChange={setJobRoleName}
+          onJobIdChange={setJobId}
+        />
       </div>
 
       <div className="actions">
@@ -170,6 +179,7 @@ function SalesQlTab() {
               placeholder="e.g. gehealthcare"
             />
           </section>
+          <SkillCategoryPicker idPrefix="salesql" value={skillCategory} onChange={setSkillCategory} />
         </div>
       )}
 
@@ -190,10 +200,23 @@ function SalesQlTab() {
             </p>
           </div>
         </div>
-        <button className="primary-btn export-btn" onClick={handleDownload} disabled={rows.length === 0}>
-          ⬇ Download outreach_contacts.xlsx
-        </button>
+        <div className="export-card-actions">
+          <button className="primary-btn export-btn" onClick={handleDownload} disabled={rows.length === 0}>
+            ⬇ Download outreach_contacts.xlsx
+          </button>
+          <button
+            className="secondary-btn icon-btn"
+            onClick={handleCopyRows}
+            disabled={rows.length === 0}
+            aria-label="Copy rows"
+            title="Copy rows"
+          >
+            ⧉
+          </button>
+        </div>
       </div>
+
+      {copyStatus && <p className="hint success">{copyStatus}</p>}
 
       {rows.length > 0 && (
         <section className="preview">

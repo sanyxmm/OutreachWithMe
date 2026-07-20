@@ -7,6 +7,18 @@ export interface CloudinaryUploadResult {
   [key: string]: unknown;
 }
 
+// Turns "https://res.cloudinary.com/<cloud>/.../upload/v123/abc123.pdf" into "v123/abc123".
+export function extractCloudinaryFileId(secureUrl: string): string {
+  const match = secureUrl.match(/\/upload\/(.+)$/);
+  if (!match) return "";
+  return match[1].replace(/\.[^./]+$/, "");
+}
+
+// Reverse of extractCloudinaryFileId: turns "v123/abc123" back into a viewable link.
+export function buildCloudinaryUrl(fileId: string): string {
+  return `https://res.cloudinary.com/${CLOUD_NAME}/image/upload/${fileId}.pdf`;
+}
+
 export async function uploadToCloudinary(blob: Blob, filename: string): Promise<CloudinaryUploadResult> {
   const url = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/auto/upload`;
   const formData = new FormData();

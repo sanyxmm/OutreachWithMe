@@ -1,6 +1,17 @@
 // Parses a pasted ContactOut curl response (Inertia.js page payload) into
 // outreach rows, reusing the same 18-column output shape as the SalesQL tab.
-import { HEADERS, WIDTHS, expYears, skillCat, type OutputRow } from "./outreach";
+import {
+  HEADERS,
+  WIDTHS,
+  expYears,
+  resolveSkillCategory,
+  SKILL_CATEGORIES,
+  type OutputRow,
+  type SkillCategoryChoice,
+} from "./outreach";
+
+export { SKILL_CATEGORIES };
+export type { SkillCategoryChoice };
 
 export { HEADERS, WIDTHS };
 
@@ -112,8 +123,8 @@ export function mergeLeads(existing: Lead[], incoming: Lead[]): Lead[] {
 export interface ContactOutOptions {
   jobRole: string;
   resumeId: string;
-  cloudinaryResumeId?: string;
   interval: number;
+  skillCategory?: SkillCategoryChoice;
 }
 
 export function buildContactOutRows(leads: Lead[], opts: ContactOutOptions): OutputRow[] {
@@ -121,9 +132,9 @@ export function buildContactOutRows(leads: Lead[], opts: ContactOutOptions): Out
     const verifiedEmails = [lead.personalEmail, lead.workEmail].filter(Boolean).join("; ");
     return [
       lead.fullName, lead.company, "", lead.role, expYears(lead.role),
-      verifiedEmails, skillCat(lead.role),
+      verifiedEmails, resolveSkillCategory(lead.role, opts.skillCategory),
       opts.resumeId, "", opts.interval, "", "", "", "", "", "",
-      opts.jobRole, "", opts.cloudinaryResumeId ?? "",
+      opts.jobRole, "",
     ];
   });
 }

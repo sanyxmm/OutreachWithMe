@@ -6,8 +6,11 @@ import {
   HEADERS,
   type Lead,
 } from "./contactout";
+import { formatJobRole, type SkillCategoryChoice } from "./outreach";
 import { exportXlsx } from "./exportXlsx";
 import InfoCallout from "./InfoCallout";
+import SkillCategoryPicker from "./SkillCategoryPicker";
+import JobRoleFields from "./JobRoleFields";
 
 interface FetchAllResponse {
   leads?: unknown[];
@@ -20,17 +23,21 @@ function ContactOutTab() {
   const [maxPages, setMaxPages] = useState(6);
   const [fetching, setFetching] = useState(false);
   const [leads, setLeads] = useState<Lead[]>([]);
-  const [jobRole, setJobRole] = useState("Intern(JobID: R4043322)");
+  const [jobRoleName, setJobRoleName] = useState("Intern");
+  const [jobId, setJobId] = useState("R4043322");
   const [resumeId, setResumeId] = useState("1c5sk0RWMtGDzy3zbWmLwGeULgJhKckiV");
-  const [cloudinaryResumeId, setCloudinaryResumeId] = useState("");
   const [interval, setInterval_] = useState(1);
+  const [skillCategory, setSkillCategory] = useState<SkillCategoryChoice>({ id: "mern+devops" });
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
+  const [copyStatus, setCopyStatus] = useState("");
+
+  const jobRole = useMemo(() => formatJobRole(jobRoleName, jobId), [jobRoleName, jobId]);
 
   const rows = useMemo(
-    () => buildContactOutRows(leads, { jobRole, resumeId, cloudinaryResumeId, interval }),
-    [leads, jobRole, resumeId, cloudinaryResumeId, interval]
+    () => buildContactOutRows(leads, { jobRole, resumeId, interval, skillCategory }),
+    [leads, jobRole, resumeId, interval, skillCategory]
   );
 
   async function handleFetch() {
@@ -75,6 +82,20 @@ function ContactOutTab() {
     await exportXlsx(rows, "outreach_contacts.xlsx");
   }
 
+  async function handleCopyRows() {
+    setCopyStatus("");
+    if (rows.length === 0) return;
+    const tsv = [HEADERS, ...rows]
+      .map((r) => r.map((v) => String(v).replace(/\t/g, " ")).join("\t"))
+      .join("\n");
+    try {
+      await navigator.clipboard.writeText(tsv);
+      setCopyStatus(`Copied ${rows.length} row(s) — paste into Google Sheets with Cmd/Ctrl+V.`);
+    } catch {
+      setCopyStatus("Couldn't copy — your browser may be blocking clipboard access.");
+    }
+  }
+
   return (
     <div className="tab-panel">
       <InfoCallout>
@@ -113,16 +134,13 @@ function ContactOutTab() {
           />
           <span className="hint">Stops early if a page comes back with no leads.</span>
         </section>
-        <section className="field">
-          <label htmlFor="co-job-role">Job role</label>
-          <input
-            id="co-job-role"
-            type="text"
-            value={jobRole}
-            onChange={(e) => setJobRole(e.target.value)}
-            placeholder='Intern(JobID: R4043322)'
-          />
-        </section>
+        <JobRoleFields
+          idPrefix="contactout"
+          role={jobRoleName}
+          jobId={jobId}
+          onRoleChange={setJobRoleName}
+          onJobIdChange={setJobId}
+        />
       </div>
 
       <div className="divider" />
@@ -159,15 +177,6 @@ function ContactOutTab() {
             />
           </section>
           <section className="field">
-            <label htmlFor="co-cloudinary-resume-id">Cloudinary resume ID</label>
-            <input
-              id="co-cloudinary-resume-id"
-              type="text"
-              value={cloudinaryResumeId}
-              onChange={(e) => setCloudinaryResumeId(e.target.value)}
-            />
-          </section>
-          <section className="field">
             <label htmlFor="co-interval">Email interval (days)</label>
             <input
               id="co-interval"
@@ -177,6 +186,7 @@ function ContactOutTab() {
               onChange={(e) => setInterval_(Number(e.target.value) || 1)}
             />
           </section>
+          <SkillCategoryPicker idPrefix="contactout" value={skillCategory} onChange={setSkillCategory} />
         </div>
       )}
 
@@ -194,14 +204,27 @@ function ContactOutTab() {
             </p>
           </div>
         </div>
-        <button
-          className="primary-btn export-btn"
-          onClick={handleDownload}
-          disabled={rows.length === 0}
-        >
-          ⬇ Download outreach_contacts.xlsx
-        </button>
+        <div className="export-card-actions">
+          <button
+            className="primary-btn export-btn"
+            onClick={handleDownload}
+            disabled={rows.length === 0}
+          >
+            ⬇ Download outreach_contacts.xlsx
+          </button>
+          <button
+            className="secondary-btn icon-btn"
+            onClick={handleCopyRows}
+            disabled={rows.length === 0}
+            aria-label="Copy rows"
+            title="Copy rows"
+          >
+            ⧉
+          </button>
+        </div>
       </div>
+
+      {copyStatus && <p className="hint success">{copyStatus}</p>}
 
       {rows.length > 0 && (
         <section className="preview">

@@ -1,15 +1,29 @@
 import { useEffect, useMemo, useState } from "react";
 import { stampTopLeft } from "./pdfStamp";
-import { uploadToCloudinary } from "./cloudinary";
+import { uploadToCloudinary, extractCloudinaryFileId, buildCloudinaryUrl } from "./cloudinary";
 import { loadDefaultResume } from "./defaultResume";
+import { extractEmailFromPdf } from "./resumeParser";
 import {
   transformRawLeads,
   buildContactOutRows,
   HEADERS,
   type Lead,
 } from "./contactout";
+import {
+  parseRows,
+  dedupeContacts,
+  buildRows,
+  makeEmail,
+  formatJobRole,
+  EMAIL_PATTERNS,
+  type Contact,
+  type EmailPattern,
+  type SkillCategoryChoice,
+} from "./outreach";
 import { exportXlsx } from "./exportXlsx";
 import { sendRowsToSheet } from "./googleSheets";
+import SkillCategoryPicker from "./SkillCategoryPicker";
+import JobRoleFields from "./JobRoleFields";
 
 const SHEET_URL_STORAGE_KEY = "referral-launchpad-sheet-web-app-url";
 
@@ -23,22 +37,32 @@ function CombinedTab() {
   const [file, setFile] = useState<File | null>(null);
   const [stampText, setStampText] = useState("");
   const [dragOver, setDragOver] = useState(false);
+  const [candidateEmail, setCandidateEmail] = useState("");
+  const [emailParsing, setEmailParsing] = useState(false);
 
   useEffect(() => {
-    loadDefaultResume().then(setFile).catch(() => {});
+    loadDefaultResume().then(handleFile).catch(() => {});
   }, []);
+
+  const [leadSource, setLeadSource] = useState<"contactout" | "salesql">("contactout");
 
   const [curl, setCurl] = useState("");
   const [maxPages, setMaxPages] = useState(10);
-  const [jobRole, setJobRole] = useState("");
+  const [salesqlHtml, setSalesqlHtml] = useState("");
+  const [domain, setDomain] = useState("");
+  const [emailPattern, setEmailPattern] = useState<EmailPattern>("first.last");
+  const [companyOnly, setCompanyOnly] = useState("");
+  const [jobRoleName, setJobRoleName] = useState("");
+  const [jobId, setJobId] = useState("");
   const [resumeId, setResumeId] = useState("");
   const [interval, setInterval_] = useState(1);
+  const [skillCategory, setSkillCategory] = useState<SkillCategoryChoice>({ id: "mern+devops" });
   const [showCurlHelp, setShowCurlHelp] = useState(false);
 
-  const [cloudinaryUrl, setCloudinaryUrl] = useState("");
   const [leads, setLeads] = useState<Lead[]>([]);
 
   const [running, setRunning] = useState(false);
+  const [stamping, setStamping] = useState(false);
   const [error, setError] = useState("");
 
   const [sheetUrl, setSheetUrl] = useState(
@@ -49,22 +73,56 @@ function CombinedTab() {
   const [sheetError, setSheetError] = useState("");
   const [copyStatus, setCopyStatus] = useState("");
 
-  const rows = useMemo(
-    () =>
-      buildContactOutRows(leads, {
+  const jobRole = useMemo(() => formatJobRole(jobRoleName, jobId), [jobRoleName, jobId]);
+
+  const contacts: Contact[] = useMemo(() => {
+    if (!salesqlHtml.trim()) return [];
+    try {
+      return dedupeContacts(parseRows(salesqlHtml), companyOnly || undefined);
+    } catch {
+      return [];
+    }
+  }, [salesqlHtml, companyOnly]);
+
+  const sampleEmail = useMemo(
+    () => makeEmail("Jane Doe", domain || "domain.com", emailPattern),
+    [domain, emailPattern]
+  );
+
+  const rows = useMemo(() => {
+    if (leadSource === "salesql") {
+      return buildRows(contacts, {
+        domain,
         jobRole,
         resumeId,
-        cloudinaryResumeId: cloudinaryUrl,
         interval,
-      }),
-    [leads, jobRole, resumeId, cloudinaryUrl, interval]
-  );
+        companyOnly: companyOnly || undefined,
+        emailPattern,
+        skillCategory,
+      });
+    }
+    return buildContactOutRows(leads, {
+      jobRole,
+      resumeId,
+      interval,
+      skillCategory,
+    });
+  }, [leadSource, contacts, leads, domain, jobRole, resumeId, interval, companyOnly, emailPattern, skillCategory]);
+
+  const sourceCount = leadSource === "salesql" ? contacts.length : leads.length;
 
   const step1Ready = !!file && stampText.trim().length > 0;
   const step2Active = step1Ready;
 
   function handleFile(f: File | null) {
     setFile(f);
+    setCandidateEmail("");
+    if (!f) return;
+    setEmailParsing(true);
+    extractEmailFromPdf(f)
+      .then(setCandidateEmail)
+      .catch(() => {})
+      .finally(() => setEmailParsing(false));
   }
 
   function rowsToTsv(): string {
@@ -73,52 +131,87 @@ function CombinedTab() {
       .join("\n");
   }
 
+  async function runStep1(): Promise<string> {
+    if (!file) throw new Error("Upload your resume PDF first.");
+    if (!stampText.trim()) {
+      throw new Error("Paste the job description keywords to stamp on the resume.");
+    }
+    const bytes = await stampTopLeft(file, stampText);
+    const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
+    const outName = file.name.replace(/\.pdf$/i, "") + "_stamped.pdf";
+    const result = await uploadToCloudinary(blob, outName);
+    const extractedResumeId = extractCloudinaryFileId(result.secure_url);
+    setResumeId(extractedResumeId);
+    return extractedResumeId;
+  }
+
+  async function handleRunStep1() {
+    setError("");
+    setStamping(true);
+    try {
+      await runStep1();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Something went wrong.");
+    } finally {
+      setStamping(false);
+    }
+  }
+
   async function handleCreate() {
     setError("");
     setCopyStatus("");
-    if (!file) {
-      setError("Upload your resume PDF first.");
-      return;
-    }
-    if (!stampText.trim()) {
-      setError("Paste the job description keywords to stamp on the resume.");
-      return;
-    }
-    if (!curl.trim()) {
+    if (leadSource === "contactout" && !curl.trim()) {
       setError("Paste a curl command for one page of the leads list first.");
+      return;
+    }
+    if (leadSource === "salesql" && !salesqlHtml.trim()) {
+      setError("Paste or upload the SalesQL contacts table HTML first.");
+      return;
+    }
+    if (leadSource === "salesql" && !domain.trim()) {
+      setError("Enter an email domain.");
       return;
     }
 
     setRunning(true);
-    setCloudinaryUrl("");
-    setLeads([]);
+    if (leadSource === "contactout") setLeads([]);
 
     try {
-      const bytes = await stampTopLeft(file, stampText);
-      const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
-      const outName = file.name.replace(/\.pdf$/i, "") + "_stamped.pdf";
-      const result = await uploadToCloudinary(blob, outName);
-      setCloudinaryUrl(result.secure_url);
+      const existingResumeId = resumeId.trim();
+      const currentResumeId = existingResumeId || (await runStep1());
 
-      const resp = await fetch("/api/contactout/fetch-all", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ curl, maxPages }),
-      });
-      const json: FetchAllResponse = await resp.json();
-      if (!resp.ok || json.error) {
-        throw new Error(json.error || "Fetch failed.");
+      let builtRows;
+      if (leadSource === "salesql") {
+        builtRows = buildRows(contacts, {
+          domain,
+          jobRole,
+          resumeId: currentResumeId,
+          interval,
+          companyOnly: companyOnly || undefined,
+          emailPattern,
+          skillCategory,
+        });
+      } else {
+        const resp = await fetch("/api/contactout/fetch-all", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ curl, maxPages }),
+        });
+        const json: FetchAllResponse = await resp.json();
+        if (!resp.ok || json.error) {
+          throw new Error(json.error || "Fetch failed.");
+        }
+        const parsed = transformRawLeads(json.leads ?? []);
+        setLeads(parsed);
+        builtRows = buildContactOutRows(parsed, {
+          jobRole,
+          resumeId: currentResumeId,
+          interval,
+          skillCategory,
+        });
       }
-      const parsed = transformRawLeads(json.leads ?? []);
-      setLeads(parsed);
 
       try {
-        const builtRows = buildContactOutRows(parsed, {
-          jobRole,
-          resumeId,
-          cloudinaryResumeId: result.secure_url,
-          interval,
-        });
         const tsv = [HEADERS, ...builtRows]
           .map((r) => r.map((v) => String(v).replace(/\t/g, " ")).join("\t"))
           .join("\n");
@@ -245,21 +338,30 @@ function CombinedTab() {
               disabled={running}
             />
 
-            <label className="rl-field-label" htmlFor="cx-cloudinary-url">
-              Cloudinary link (auto-filled)
+            <label className="rl-field-label" htmlFor="cx-candidate-email">
+              Candidate email (parsed from resume)
             </label>
             <div className="rl-locked-input">
               <input
-                id="cx-cloudinary-url"
+                id="cx-candidate-email"
                 type="text"
-                value={cloudinaryUrl}
-                readOnly
-                placeholder="Filled in after generating"
+                value={candidateEmail}
+                onChange={(e) => setCandidateEmail(e.target.value)}
+                placeholder={emailParsing ? "Parsing resume..." : "Not found — enter manually"}
               />
-              {cloudinaryUrl ? (
-                <span className="rl-locked-badge">Active Ready</span>
+              {emailParsing ? (
+                <span className="spinner" aria-hidden="true" />
               ) : (
-                <span className="rl-lock-icon">🔒</span>
+                <button
+                  type="button"
+                  className="rl-icon-btn"
+                  onClick={handleRunStep1}
+                  disabled={running || stamping || !file || !stampText.trim()}
+                  aria-label="Stamp resume and generate resume file ID"
+                  title="Stamp resume and generate resume file ID"
+                >
+                  {stamping ? <span className="spinner spinner-dark" aria-hidden="true" /> : "▶"}
+                </button>
               )}
             </div>
           </div>
@@ -269,81 +371,178 @@ function CombinedTab() {
           <div className="rl-card-head">
             <span className="rl-step-pill">STEP 2</span>
             <h3>Point at Employees to Contact</h3>
-            <span className="rl-card-meta">⚡ Instant Send Ready</span>
+            <div className="rl-source-toggle" role="group" aria-label="Lead source">
+              <button
+                type="button"
+                className={`rl-source-btn ${leadSource === "contactout" ? "active" : ""}`}
+                onClick={() => setLeadSource("contactout")}
+                disabled={running}
+              >
+                ContactOut
+              </button>
+              <button
+                type="button"
+                className={`rl-source-btn ${leadSource === "salesql" ? "active" : ""}`}
+                onClick={() => setLeadSource("salesql")}
+                disabled={running}
+              >
+                SalesQL
+              </button>
+            </div>
           </div>
 
           <div className="rl-card-body">
-            <div className="rl-label-row">
-              <label className="rl-field-label" htmlFor="cx-curl">
-                ContactOut curl command (page 1)
-              </label>
-              <button
-                type="button"
-                className="rl-link-btn"
-                onClick={() => setShowCurlHelp((v) => !v)}
-              >
-                Where to find this?
-              </button>
-            </div>
-            {showCurlHelp && (
-              <p className="hint rl-curl-help">
-                Open the ContactOut leads list in your browser, open devtools → Network tab,
-                reload, click the <code>leads?...</code> request, and "Copy as cURL". Paste that
-                here.
-              </p>
+            {leadSource === "contactout" ? (
+              <>
+                <div className="rl-label-row">
+                  <label className="rl-field-label" htmlFor="cx-curl">
+                    ContactOut curl command (page 1)
+                  </label>
+                  <button
+                    type="button"
+                    className="rl-link-btn"
+                    onClick={() => setShowCurlHelp((v) => !v)}
+                  >
+                    Where to find this?
+                  </button>
+                </div>
+                {showCurlHelp && (
+                  <p className="hint rl-curl-help">
+                    Open the ContactOut leads list in your browser, open devtools → Network tab,
+                    reload, click the <code>leads?...</code> request, and "Copy as cURL". Paste
+                    that here.
+                  </p>
+                )}
+                <textarea
+                  id="cx-curl"
+                  className="rl-textarea mono"
+                  placeholder="curl 'https://contactout.com/lists/.../leads?...' -H '...' -b '...' ..."
+                  value={curl}
+                  onChange={(e) => setCurl(e.target.value)}
+                  rows={5}
+                  disabled={running}
+                />
+              </>
+            ) : (
+              <>
+                <label className="rl-field-label" htmlFor="cx-salesql-html">
+                  SalesQL contacts HTML
+                </label>
+                <textarea
+                  id="cx-salesql-html"
+                  className="rl-textarea mono"
+                  placeholder="Paste the copied SalesQL table HTML here"
+                  value={salesqlHtml}
+                  onChange={(e) => setSalesqlHtml(e.target.value)}
+                  rows={5}
+                  disabled={running}
+                />
+                <div className="field-row">
+                  <section className="field">
+                    <label className="rl-field-label" htmlFor="cx-domain">
+                      Email domain
+                    </label>
+                    <input
+                      id="cx-domain"
+                      type="text"
+                      value={domain}
+                      onChange={(e) => setDomain(e.target.value)}
+                      placeholder="company.com"
+                      disabled={running}
+                    />
+                  </section>
+                  <section className="field">
+                    <label className="rl-field-label" htmlFor="cx-email-pattern">
+                      Email pattern
+                    </label>
+                    <select
+                      id="cx-email-pattern"
+                      value={emailPattern}
+                      onChange={(e) => setEmailPattern(e.target.value as EmailPattern)}
+                      disabled={running}
+                    >
+                      {EMAIL_PATTERNS.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.label}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="hint">e.g. {sampleEmail}</span>
+                  </section>
+                </div>
+              </>
             )}
-            <textarea
-              id="cx-curl"
-              className="rl-textarea mono"
-              placeholder="curl 'https://contactout.com/lists/.../leads?...' -H '...' -b '...' ..."
-              value={curl}
-              onChange={(e) => setCurl(e.target.value)}
-              rows={5}
-              disabled={running}
-            />
 
             <details className="rl-advanced">
               <summary>
                 <span className="rl-advanced-icon">⚙</span> Advanced settings
               </summary>
               <div className="field-row">
-                <section className="field">
-                  <label className="rl-field-label" htmlFor="cx-job-role">
-                    Job role for outreach
-                  </label>
-                  <input
-                    id="cx-job-role"
-                    type="text"
-                    value={jobRole}
-                    onChange={(e) => setJobRole(e.target.value)}
-                    disabled={running}
-                  />
-                </section>
-                <section className="field">
-                  <label className="rl-field-label" htmlFor="cx-max-pages">
-                    Max pages to fetch
-                  </label>
-                  <input
-                    id="cx-max-pages"
-                    type="number"
-                    min={1}
-                    max={50}
-                    value={maxPages}
-                    onChange={(e) => setMaxPages(Number(e.target.value) || 1)}
-                    disabled={running}
-                  />
-                </section>
+                <JobRoleFields
+                  idPrefix="cx"
+                  role={jobRoleName}
+                  jobId={jobId}
+                  onRoleChange={setJobRoleName}
+                  onJobIdChange={setJobId}
+                  disabled={running}
+                />
+                {leadSource === "contactout" ? (
+                  <section className="field">
+                    <label className="rl-field-label" htmlFor="cx-max-pages">
+                      Max pages to fetch
+                    </label>
+                    <input
+                      id="cx-max-pages"
+                      type="number"
+                      min={1}
+                      max={50}
+                      value={maxPages}
+                      onChange={(e) => setMaxPages(Number(e.target.value) || 1)}
+                      disabled={running}
+                    />
+                  </section>
+                ) : (
+                  <section className="field">
+                    <label className="rl-field-label" htmlFor="cx-company-only">
+                      Company filter (optional)
+                    </label>
+                    <input
+                      id="cx-company-only"
+                      type="text"
+                      value={companyOnly}
+                      onChange={(e) => setCompanyOnly(e.target.value)}
+                      placeholder="e.g. gehealthcare"
+                      disabled={running}
+                    />
+                  </section>
+                )}
                 <section className="field">
                   <label className="rl-field-label" htmlFor="cx-resume-id">
                     Resume file ID
                   </label>
-                  <input
-                    id="cx-resume-id"
-                    type="text"
-                    value={resumeId}
-                    onChange={(e) => setResumeId(e.target.value)}
-                    disabled={running}
-                  />
+                  <div className="rl-locked-input">
+                    <input
+                      id="cx-resume-id"
+                      type="text"
+                      value={resumeId}
+                      onChange={(e) => setResumeId(e.target.value)}
+                      disabled={running}
+                    />
+                    <button
+                      type="button"
+                      className="rl-icon-btn"
+                      onClick={() => window.open(buildCloudinaryUrl(resumeId.trim()), "_blank", "noopener,noreferrer")}
+                      disabled={!resumeId.trim()}
+                      aria-label="Open resume file"
+                      title="Open resume file"
+                    >
+                      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                        <polyline points="15 3 21 3 21 9" />
+                        <line x1="10" y1="14" x2="21" y2="3" />
+                      </svg>
+                    </button>
+                  </div>
                 </section>
                 <section className="field">
                   <label className="rl-field-label" htmlFor="cx-interval">
@@ -358,6 +557,11 @@ function CombinedTab() {
                     disabled={running}
                   />
                 </section>
+                <SkillCategoryPicker
+                  idPrefix="combined"
+                  value={skillCategory}
+                  onChange={setSkillCategory}
+                />
               </div>
             </details>
 
@@ -385,8 +589,8 @@ function CombinedTab() {
               </button>
             </div>
             <p className="rl-actions-caption">
-              Clicking generate runs the pipeline, stamps your resume, and automatically copies
-              the outreach rows to your clipboard. Use download to save an xlsx copy.
+              Generate fetches leads and copies the rows to your clipboard. Use ▶ to stamp &amp;
+              upload the resume separately.
             </p>
           </div>
         </section>
@@ -399,7 +603,7 @@ function CombinedTab() {
           <div className="rl-results-header">
             <div>
               <span className="rl-results-count">
-                {leads.length} lead{leads.length === 1 ? "" : "s"} collected
+                {sourceCount} lead{sourceCount === 1 ? "" : "s"} collected
               </span>
               <span className="rl-results-sub">
                 Ready to send — copy, sync to Sheets, or review below.
